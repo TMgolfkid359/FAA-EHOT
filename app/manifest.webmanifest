@@ -1,0 +1,13 @@
+{
+  "name": "HOT 26-27 – Deicing Holdover Times",
+  "short_name": "HOT 26-27",
+  "description": "Deicing holdover time calculator based on the FAA Holdover Time Guidelines, Winter 2026-2027.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

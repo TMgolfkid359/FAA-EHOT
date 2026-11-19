@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="description" content="Deicing holdover time calculator based on the FAA Holdover Time Guidelines, Winter 2026-2027.">
+  <title>HOT 26-27 · Deicing Holdover Times</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20M4.9 6.5l14.2 11M19.1 6.5L4.9 17.5M9.5 3.5L12 6l2.5-2.5M9.5 20.5L12 18l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <div>
+        <h1>Holdover Times</h1>
+        <p class="sub">FAA HOT Guidelines · Winter 2026-2027</p>
+      </div>
+    </div>
+    <button id="themeBtn" class="icon-btn" aria-label="Toggle light/dark theme" title="Toggle theme">◐</button>
+  </header>
+
+  <div id="timerBar" class="timer-bar" hidden>
+    <div class="timer-main">
+      <span class="timer-label" id="timerLabel">HOT clock</span>
+      <span class="timer-elapsed" id="timerElapsed">0:00</span>
+    </div>
+    <div class="timer-status" id="timerStatus"></div>
+    <div class="timer-track"><div class="timer-fill" id="timerFill"></div><div class="timer-min" id="timerMinMark"></div></div>
+    <button class="btn small ghost" id="timerStop">Clear</button>
+  </div>
+
+  <main>
+    <!-- ======================= HOT ======================= -->
+    <section id="tab-hot" class="tab active" aria-labelledby="nav-hot">
+      <div class="card">
+        <label class="field-label">Fluid type</label>
+        <div class="seg" id="typeSeg" role="radiogroup">
+          <button data-v="I" role="radio">Type I</button>
+          <button data-v="II" role="radio">Type II</button>
+          <button data-v="III" role="radio">Type III</button>
+          <button data-v="IV" role="radio">Type IV</button>
+        </div>
+
+        <label class="field-label" for="fluidSel" id="fluidLabel">Fluid</label>
+        <select id="fluidSel"></select>
+        <p class="hint" id="fluidHint"></p>
+
+        <div id="concWrap">
+          <label class="field-label">Concentration (fluid/water, % volume)</label>
+          <div class="seg" id="concSeg" role="radiogroup">
+            <button data-v="100/0" role="radio">100/0</button>
+            <button data-v="75/25" role="radio">75/25</button>
+            <button data-v="50/50" role="radio">50/50</button>
+          </div>
+        </div>
+
+        <label class="field-label" for="oatIn">Outside air temperature</label>
+        <div class="oat-row">
+          <button class="btn step" data-step="-1" aria-label="Decrease temperature">−</button>
+          <input id="oatIn" type="number" inputmode="decimal" step="0.5" placeholder="OAT" enterkeyhint="done">
+          <button class="btn step" data-step="1" aria-label="Increase temperature">+</button>
+          <div class="seg unit" id="unitSeg" role="radiogroup">
+            <button data-v="C" role="radio">°C</button>
+            <button data-v="F" role="radio">°F</button>
+          </div>
+        </div>
+
+        <label class="field-label" for="wxSel">Weather condition</label>
+        <select id="wxSel"></select>
+
+        <div id="intensityWrap" hidden>
+          <label class="field-label">Snowfall intensity <span class="muted">(from visibility, Table 57)</span></label>
+          <div class="seg" id="intSeg" role="radiogroup">
+            <button data-v="very light" role="radio">Very light</button>
+            <button data-v="light" role="radio">Light</button>
+            <button data-v="moderate" role="radio">Moderate</button>
+            <button data-v="heavy" role="radio">Heavy</button>
+          </div>
+          <details class="inline-helper" id="visHelper">
+            <summary>Determine intensity from visibility</summary>
+            <div class="vis-grid">
+              <select id="hVis" aria-label="Visibility"></select>
+              <div class="seg" id="hDayNight" role="radiogroup">
+                <button data-v="day" role="radio">Day</button>
+                <button data-v="night" role="radio">Night</button>
+              </div>
+            </div>
+            <p class="hint" id="hVisOut"></p>
+          </details>
+        </div>
+      </div>
+
+      <div id="result" class="result card" aria-live="polite"></div>
+    </section>
+
+    <!-- ======================= ALLOWANCE ======================= -->
+    <section id="tab-at" class="tab" aria-labelledby="nav-at">
+      <div class="card">
+        <p class="intro">Allowance times for <strong>ice pellets and small hail</strong> (Tables 53–56). Only for undiluted (100/0) Type III and Type IV fluids that have been validated.</p>
+        <label class="field-label" for="atFluid">Fluid (Table 53)</label>
+        <select id="atFluid"></select>
+        <p class="hint" id="atFluidHint"></p>
+
+        <label class="field-label" for="atCond">Precipitation (METAR)</label>
+        <select id="atCond"></select>
+
+        <label class="field-label" for="atOat">Outside air temperature</label>
+        <div class="oat-row">
+          <button class="btn step" data-atstep="-1" aria-label="Decrease temperature">−</button>
+          <input id="atOat" type="number" inputmode="decimal" step="0.5" placeholder="OAT">
+          <button class="btn step" data-atstep="1" aria-label="Increase temperature">+</button>
+          <div class="seg unit" id="atUnitSeg" role="radiogroup">
+            <button data-v="C" role="radio">°C</button>
+            <button data-v="F" role="radio">°F</button>
+          </div>
+        </div>
+
+        <label class="field-label" for="atRot">Aircraft rotation speed (V<sub>R</sub>)</label>
+        <div class="seg" id="atRotSeg" role="radiogroup">
+          <button data-v="90" role="radio">&lt; 100 kt</button>
+          <button data-v="100" role="radio">100–114 kt</button>
+          <button data-v="115" role="radio">≥ 115 kt</button>
+        </div>
+      </div>
+      <div id="atResult" class="result card" aria-live="polite"></div>
+    </section>
+
+    <!-- ======================= SNOW ======================= -->
+    <section id="tab-snow" class="tab" aria-labelledby="nav-snow">
+      <div class="card">
+        <p class="intro">Snowfall intensity as a function of prevailing visibility (Table 57). Use METAR/SPECI or crew-observed visibility. <strong>Do not use RVR.</strong></p>
+        <label class="field-label">Visibility units</label>
+        <div class="seg" id="sUnitSeg" role="radiogroup">
+          <button data-v="sm" role="radio">Statute miles</button>
+          <button data-v="m" role="radio">Meters</button>
+        </div>
+        <label class="field-label" for="sVis">Visibility</label>
+        <select id="sVis"></select>
+        <label class="field-label">Time of day</label>
+        <div class="seg" id="sDayNight" role="radiogroup">
+          <button data-v="day" role="radio">Day</button>
+          <button data-v="night" role="radio">Night</button>
+        </div>
+        <label class="field-label">Outside air temperature</label>
+        <div class="seg" id="sTempSeg" role="radiogroup">
+          <button data-v="cold" role="radio">−1 °C (30 °F) and below</button>
+          <button data-v="warm" role="radio">Above −1 °C (30 °F)</button>
+        </div>
+      </div>
+      <div id="snowResult" class="result card" aria-live="polite"></div>
+      <div class="card"><div id="snowTable" class="table-wrap"></div></div>
+    </section>
+
+    <!-- ======================= TABLES ======================= -->
+    <section id="tab-tables" class="tab" aria-labelledby="nav-tables">
+      <div class="card">
+        <label class="field-label" for="tblSel">Table</label>
+        <select id="tblSel"></select>
+      </div>
+      <div class="card"><div id="tblView" class="table-wrap"></div></div>
+    </section>
+
+    <!-- ======================= INFO ======================= -->
+    <section id="tab-info" class="tab" aria-labelledby="nav-info">
+      <div class="card prose" id="infoBody"></div>
+    </section>
+  </main>
+
+  <nav class="bottomnav" role="tablist">
+    <button id="nav-hot" data-tab="hot" class="active" role="tab"><span class="ni">⏱</span>HOT</button>
+    <button id="nav-at" data-tab="at" role="tab"><span class="ni">◆</span>Allowance</button>
+    <button id="nav-snow" data-tab="snow" role="tab"><span class="ni">❄</span>Snow vis</button>
+    <button id="nav-tables" data-tab="tables" role="tab"><span class="ni">▦</span>Tables</button>
+    <button id="nav-info" data-tab="info" role="tab"><span class="ni">ⓘ</span>Info</button>
+  </nav>
+
+  <script src="data/hot-2026-27.js"></script>
+  <script src="hot-engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
