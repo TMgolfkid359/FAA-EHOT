@@ -198,7 +198,7 @@
     const col = at.columns[colIdx];
     src.band = q.unit === "F" ? col.labelF : col.labelC;
     const row = at.rows.find((r) => r.id === q.condition);
-    if (!row) return noHot("Select the precipitation condition.", src);
+    if (!row) return noHot(q.condition ? "No allowance times exist for this condition with this fluid type." : "Select the precipitation condition.", src);
     src.condition = row.name;
     src.metar = row.metar;
     const minKt = col.minRotationKt || 100;

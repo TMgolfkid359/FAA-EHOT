@@ -14,6 +14,11 @@ An offline-capable web app (PWA) for aircraft ground deicing/anti-icing **holdov
 - **Active frost** (Table 1).
 - **Snowfall intensity from visibility** (Table 57): day/night and OAT aware.
 - **Allowance times** for ice pellets and small hail (Tables 53–56), including fluid validation status and rotation-speed limits.
+- **Live METAR**: enter an ICAO code (or paste a METAR/SPECI). The app decodes temperature (T-group tenths when present),
+  visibility (preferring `SFC VIS` from the remarks), weather and day/night (from the sun's position), then *suggests* the HOT condition:
+  snowfall intensity from Table 57, the country-specific SG/GS/SHGS/GR/PL rules from FAA General Information Table 3,
+  and mixed conditions only where the guidelines provide times. Ice pellets go to allowance times. Nothing is applied until you
+  press **Apply**, and the observation age is shown, with a warning when it is more than 60 minutes old.
 - **HOT clock**: green / amber (past minimum) / red (past maximum), kept across page reloads.
 - **Table viewer** that shows every table as published, with notes.
 - Applies the cell- and column-level rules from the notes, e.g. no freezing drizzle/light freezing rain HOT below −10 °C,
@@ -32,6 +37,16 @@ python3 -m http.server 8000 --directory app   # then open http://localhost:8000
 
 Opening `app/index.html` directly also works, but the offline service worker needs http(s).
 A GitHub Actions workflow (`.github/workflows/pages.yml`) runs the tests and deploys `app/` to GitHub Pages on pushes to `main`.
+
+## METAR source
+
+| Source | Setup | Coverage | Notes |
+|---|---|---|---|
+| `api.weather.gov` (NWS) | none (default) | US + Canada | Allows browser requests. Reports can lag up to about an hour behind |
+| `aviationweather.gov` via proxy | deploy `proxy/metar-worker.js` (free Cloudflare Worker), paste its URL in **Info → METAR source** | worldwide, current | aviationweather.gov doesn't allow direct browser requests, so a proxy is needed |
+| Paste | none, works offline | any | |
+
+Live METARs are never served from the offline cache.
 
 ## Data pipeline
 

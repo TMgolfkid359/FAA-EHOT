@@ -36,6 +36,20 @@
   <main>
     <!-- ======================= HOT ======================= -->
     <section id="tab-hot" class="tab active" aria-labelledby="nav-hot">
+      <div class="card metar-card" id="metarCard">
+        <label class="field-label" for="mStation">Live METAR</label>
+        <form class="metar-row" id="mForm" autocomplete="off">
+          <input id="mStation" type="text" maxlength="4" placeholder="ICAO e.g. KORD" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-label="ICAO station">
+          <button class="btn" id="mGet" type="submit">Get</button>
+          <button class="btn ghost" id="mPasteBtn" type="button" title="Paste a METAR instead">Paste</button>
+        </form>
+        <div id="mPasteWrap" hidden>
+          <textarea id="mPaste" rows="3" placeholder="Paste METAR/SPECI text, e.g. METAR CYVO 160200Z 15011G17KT 1SM -SN DRSN OVC009 M06/M08 A2948" spellcheck="false"></textarea>
+          <button class="btn small" id="mDecode" type="button">Decode</button>
+        </div>
+        <div id="mOut" aria-live="polite"></div>
+      </div>
+
       <div class="card">
         <label class="field-label">Fluid type</label>
         <div class="seg" id="typeSeg" role="radiogroup">
@@ -180,6 +194,7 @@
 
   <script src="data/hot-2026-27.js"></script>
   <script src="hot-engine.js"></script>
+  <script src="metar.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

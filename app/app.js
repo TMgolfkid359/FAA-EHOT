@@ -485,8 +485,176 @@
     <h3>Not included</h3>
     <p>Lowest Operational Use Temperature (LOUT) tables and fluid lists (Tables 58–62), application guidelines (Tables 63–65), and degree-specific HOTs (DSHOTs).
       Consult the official documents for these.</p>
+    <h3>METAR source</h3>
+    <div class="settings">
+      <p>By default, METARs come from <strong>api.weather.gov</strong> (NWS), which covers the US and Canada. Reports can lag up to about an hour behind.
+        For current worldwide METARs from <strong>aviationweather.gov</strong>, deploy the small proxy in <code>proxy/metar-worker.js</code> (free Cloudflare Worker) and paste its URL here.</p>
+      <input type="url" id="proxyUrl" placeholder="https://hot-metar.yourname.workers.dev" spellcheck="false">
+      <p class="hint" id="proxyStatus"></p>
+    </div>
     <h3>Offline use</h3>
     <p>After the first load the app works offline. On iOS: Share → <em>Add to Home Screen</em>. On Android/Chrome: menu → <em>Install app</em>.</p>`;
+
+
+  // ================================================================== LIVE METAR (settings wired after info render)
+  const M = window.Metar;
+  const PROXY_KEY = "hot2627.metarProxy";
+  let mState = null; // { parsed, lat, lon, name, source, fetchedAt, night, nightAuto }
+  const mStation = $("#mStation");
+  mStation.value = S.mStation || "";
+
+  function ageInfo(t) {
+    if (!t) return { cls: "stale", text: "time unknown" };
+    const min = Math.round((Date.now() - t.getTime()) / 60000);
+    const text = min < 1 ? "just now" : min < 120 ? `${min} min old` : `${Math.floor(min / 60)} h ${min % 60} min old`;
+    return { cls: min <= 60 ? "fresh" : min <= 90 ? "old" : "stale", text, min };
+  }
+
+  async function fetchMetar(id) {
+    const proxy = (localStorage.getItem(PROXY_KEY) || "").trim();
+    if (proxy) {
+      const res = await fetch(`${proxy.replace(/\/$/, "")}/?ids=${encodeURIComponent(id)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`METAR proxy returned HTTP ${res.status}.`);
+      const arr = await res.json();
+      if (!Array.isArray(arr) || !arr.length) throw new Error(`No current METAR found for ${id}.`);
+      const o = arr[0];
+      return { raw: o.rawOb, lat: o.lat, lon: o.lon, name: o.name, source: "aviationweather.gov (via proxy)" };
+    }
+    const res = await fetch(`https://api.weather.gov/stations/${encodeURIComponent(id)}/observations?limit=12`, { cache: "no-store", headers: { Accept: "application/geo+json" } });
+    if (res.status === 404) throw new Error(`${id} isn't in the NWS station list (it covers the US and Canada). Set up the aviationweather.gov proxy (Info tab) for worldwide coverage, or paste the METAR.`);
+    if (!res.ok) throw new Error(`api.weather.gov returned HTTP ${res.status}.`);
+    const j = await res.json();
+    const f = (j.features || []).find((x) => x.properties && x.properties.rawMessage);
+    if (!f) throw new Error(`No recent METAR text for ${id} from api.weather.gov. Paste the METAR instead.`);
+    const [lon, lat] = (f.geometry && f.geometry.coordinates) || [];
+    return { raw: f.properties.rawMessage, lat, lon, name: f.properties.stationName || "", source: "api.weather.gov (NWS)" };
+  }
+
+  async function getMetar() {
+    const id = mStation.value.trim().toUpperCase();
+    mStation.value = id;
+    if (!/^[A-Z][A-Z0-9]{3}$/.test(id)) { $("#mOut").innerHTML = `<p class="m-err">Enter a 4-character ICAO identifier.</p>`; return; }
+    S.mStation = id; save();
+    $("#mOut").innerHTML = `<p class="hint">Fetching METAR for ${esc(id)}…</p>`;
+    try {
+      if (!navigator.onLine) throw new Error("You are offline. Paste a METAR instead.");
+      const r = await fetchMetar(id);
+      loadMetar(r.raw, r);
+    } catch (e) {
+      mState = null;
+      $("#mOut").innerHTML = `<p class="m-err">${esc(e.message || "Could not fetch the METAR.")}</p>`;
+    }
+  }
+
+  function loadMetar(raw, meta) {
+    const parsed = M.parse(raw);
+    if (parsed.error) { $("#mOut").innerHTML = `<p class="m-err">${esc(parsed.error)}</p>`; mState = null; return; }
+    const st = { parsed, fetchedAt: new Date(), lat: meta.lat, lon: meta.lon, name: meta.name, source: meta.source };
+    if (typeof st.lat === "number" && typeof st.lon === "number" && parsed.time) { st.night = M.isNight(st.lat, st.lon, parsed.time); st.nightAuto = true; }
+    else { st.night = S.dayNight === "night"; st.nightAuto = false; }
+    mState = st;
+    renderMetar();
+  }
+
+  function renderMetar() {
+    const st = mState, p = st.parsed;
+    const a = M.assess(p, { data: D, night: st.nightAuto ? st.night : st.nightConfirmed ? st.night : null });
+    st.assessment = a;
+    const age = ageInfo(p.time);
+    const tC = p.tempC;
+    const tTxt = tC === undefined ? "—" : `${tC} °C / ${Math.round(E.toF(tC) * 10) / 10} °F${p.tempPrecise ? "" : " (rounded)"}`;
+    const ctry = { US: "United States", CA: "Canada", ROW: "Outside US/Canada" }[a.country];
+    let sug;
+    if (a.kind === "hot") sug = `<div class="m-suggest"><div class="s-title">Suggested: ${esc(a.summary)}</div>
+        ${a.confirm ? `<p class="m-warn">Confirm this condition by observation before using it.</p>` : ""}
+        ${a.reason ? `<p class="m-warn">${esc(a.reason)}</p>` : ""}
+        <div class="r-actions"><button class="btn" id="mApply">Apply to calculator</button></div></div>`;
+    else if (a.kind === "allowance") sug = `<div class="m-suggest"><div class="s-title">Suggested: ${esc(a.summary)}</div>
+        <p class="hint">Ice pellets / small hail: holdover times do not exist. Allowance times may apply to validated undiluted Type III/IV fluids.</p>
+        <div class="r-actions"><button class="btn" id="mApplyAt">Open allowance times</button></div></div>`;
+    else if (a.kind === "nowx") sug = `<div class="m-suggest"><div class="s-title">${esc(a.summary)}</div>
+        <div class="r-actions"><button class="btn ghost" id="mApplyTemp">Use temperature only</button>${a.frostPossible ? `<button class="btn ghost" id="mApplyFrost">Active frost</button>` : ""}</div></div>`;
+    else sug = `<div class="m-suggest none"><div class="s-title">No HOT: ${esc(a.summary)}</div><p class="r-reason">${esc(a.reason || "")}</p>
+        <div class="r-actions"><button class="btn ghost" id="mApplyTemp">Use temperature only</button></div></div>`;
+
+    $("#mOut").innerHTML = `
+      <div class="raw-metar">${esc(p.raw)}</div>
+      <div><span class="m-age ${age.cls}">${p.time ? p.time.toISOString().slice(11, 16) + "Z · " : ""}${esc(age.text)}</span>
+        <span class="hint">${esc(st.name || p.station)}${st.source ? " · " + esc(st.source) : ""}</span></div>
+      ${age.cls !== "fresh" ? `<p class="m-warn">This observation is more than an hour old. Check for a newer METAR or SPECI.</p>` : ""}
+      <dl class="m-grid">
+        <dt>Temperature</dt><dd>${esc(tTxt)}</dd>
+        <dt>Visibility</dt><dd>${esc(p.vis ? p.vis.text : "—")}</dd>
+        <dt>Weather</dt><dd>${esc(M.describe(p))}</dd>
+        <dt>Wind</dt><dd>${p.wind ? esc(`${p.wind.dir}° ${p.wind.speed}${p.wind.gust ? "G" + p.wind.gust : ""} ${p.wind.unit}`) : "—"}</dd>
+        <dt>Region</dt><dd>${esc(ctry)}</dd>
+      </dl>
+      <div class="m-dn">${st.nightAuto ? "Computed from sun position:" : "<strong style='color:var(--warn)'>Confirm:</strong>"}
+        <div class="seg" id="mDn"><button data-v="day">Day</button><button data-v="night">Night</button></div></div>
+      ${sug}
+      ${a.warnings.length ? a.warnings.map((w) => `<p class="m-warn">⚠ ${esc(w)}</p>`).join("") : ""}
+      ${a.notes.length ? `<ul class="m-notes">${a.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+      <p class="hint">Decoded suggestion only. Verify the weather by observation. RVR is never used.</p>`;
+
+    seg($("#mDn"), st.night ? "night" : "day", (v) => { st.night = v === "night"; st.nightAuto = false; st.nightConfirmed = true; renderMetar(); });
+    const on = (id, fn) => { const b = $(id); if (b) b.addEventListener("click", fn); };
+    on("#mApply", () => applyMetar(false));
+    on("#mApplyTemp", () => applyMetar(true));
+    on("#mApplyFrost", () => { applyMetar(true); S.weather = "frost"; wxSel.value = "frost"; refreshHot(); });
+    on("#mApplyAt", applyMetarAt);
+  }
+
+  function setOat(input, unitKey, tC) {
+    const v = S[unitKey] === "F" ? Math.round(E.toF(tC) * 10) / 10 : tC;
+    input.value = String(v);
+    return input.value;
+  }
+
+  function applyMetar(tempOnly) {
+    const st = mState, a = st.assessment;
+    if (a.oatC !== undefined) S.oat = setOat(oatIn, "unit", a.oatC);
+    if (!tempOnly && a.kind === "hot") {
+      S.weather = a.weather; wxSel.value = a.weather;
+      if (a.weather === "snow" && a.intensity) {
+        S.intensity = a.intensity; intSeg.set(a.intensity);
+        S.vis = a.visRow !== undefined ? String(a.visRow) : ""; hVis.value = S.vis;
+        S.dayNight = st.night ? "night" : "day"; dnSeg.set(S.dayNight);
+        $("#hVisOut").innerHTML = S.vis !== "" ? `From METAR ${esc(st.parsed.station)}: ${esc(st.parsed.vis.text)} → <strong>${esc(a.intensity)}</strong> snow.` : "";
+      }
+    }
+    refreshHot();
+    $("#result").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function applyMetarAt() {
+    const st = mState, a = st.assessment;
+    if (a.oatC !== undefined) S.atOat = setOat(atOat, "atUnit", a.oatC);
+    S.atCond = a.atCondition;
+    fillAtConds();
+    if ([...atCond.options].some((o) => o.value === a.atCondition)) { atCond.value = a.atCondition; S.atCond = a.atCondition; }
+    refreshAt();
+    showTab("at");
+  }
+
+  $("#mForm").addEventListener("submit", (e) => { e.preventDefault(); getMetar(); });
+  $("#mPasteBtn").addEventListener("click", () => { const w = $("#mPasteWrap"); w.hidden = !w.hidden; if (!w.hidden) $("#mPaste").focus(); });
+  $("#mDecode").addEventListener("click", () => { const t = $("#mPaste").value.trim(); if (t) loadMetar(t, { source: "pasted" }); });
+  // keep the age badge current; auto-refresh a fetched METAR every 5 minutes while visible
+  setInterval(() => {
+    if (!mState) return;
+    if (mState.source && mState.source !== "pasted" && !document.hidden && Date.now() - mState.fetchedAt.getTime() > 5 * 60000) getMetar();
+    else renderMetar();
+  }, 60000);
+
+  const proxyIn = $("#proxyUrl");
+  proxyIn.value = localStorage.getItem("hot2627.metarProxy") || "";
+  const proxyMsg = () => { $("#proxyStatus").textContent = proxyIn.value.trim() ? "Using aviationweather.gov through your proxy." : "Using api.weather.gov (no proxy set)."; };
+  proxyMsg();
+  proxyIn.addEventListener("change", () => {
+    const v = proxyIn.value.trim();
+    if (v && !/^https:\/\//.test(v)) { $("#proxyStatus").textContent = "The proxy URL must start with https://"; return; }
+    localStorage.setItem("hot2627.metarProxy", v); proxyMsg();
+  });
 
   // ================================================================== boot
   fillFluids();
