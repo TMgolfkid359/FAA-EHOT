@@ -36,6 +36,9 @@ python3 -m http.server 8000 --directory app   # then open http://localhost:8000
 ```
 
 Opening `app/index.html` directly also works, but the offline service worker needs http(s).
+**Single-file version:** `python3 tools/build_single.py` writes `dist/hot-2026-27.html`, one self-contained file
+(about 400 KB) that works when double-clicked or emailed. Offline install and caching need the hosted version.
+
 A GitHub Actions workflow (`.github/workflows/pages.yml`) runs the tests and deploys `app/` to GitHub Pages on pushes to the default branch (enable it under Settings → Pages → Source: GitHub Actions).
 
 ## METAR source
